@@ -25,11 +25,5 @@ mise install
 Format repository files:
 
 ```bash
-mise run format
-```
-
-Or directly:
-
-```bash
 dprint fmt
 ```

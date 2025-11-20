@@ -1,7 +1,3 @@
 [tools]
 dprint = "latest"
 marksman = "latest"
-
-[tasks.format]
-description = "Format repository markdown files"
-run = ["dprint fmt"]

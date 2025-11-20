@@ -21,3 +21,11 @@ auto-format = true
 [language.formatter]
 command = "mise"
 args = ["exec", "--", "dprint", "fmt", "--stdin", "yaml"]
+
+[[language]]
+name = "asm"
+scope = "source.asm"
+file-types = ["s"]
+auto-format = false
+comment-token = ";"
+indent = { tab-width = 4, unit = "    " }
