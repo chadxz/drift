@@ -1,5 +1,6 @@
 [tools]
+"cargo:asm-lsp" = "0.10.1"
+"cargo:just-lsp" = "0.2.8"
 dprint = "0.50.2"
 just = "1.43.1"
-"cargo:just-lsp" = "0.2.8"
 marksman = "2024-12-18"
