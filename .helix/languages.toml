@@ -21,4 +21,3 @@ auto-format = true
 [language.formatter]
 command = "mise"
 args = ["exec", "--", "dprint", "fmt", "--stdin", "yaml"]
-
