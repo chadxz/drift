@@ -23,9 +23,6 @@ RUN apt-get update && \
 # Install latest version of just
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
-# Activate mise in the shell
-ENV PATH="/root/.local/bin:$PATH"
-
 # Set working directory
 WORKDIR /workspace
 
