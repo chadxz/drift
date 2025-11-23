@@ -1,21 +1,23 @@
-.section .data
+.equ STDOUT_FILENO, 1
+
+.section .rodata
 
 msg:
-	.ascii "Hello from Drift on ARM64!\n"
-msg_end:
+    .ascii "Hello from Drift on ARM64!\n"
+msg_len = . - msg
 
-	.section .text
-	.global  _start
+.section .text
 
+.global  _start
 _start:
-    # write(1, msg, len)
-    mov x0, #1
+    # write(STDOUT_FILENO, msg, len)
+    mov x0, #STDOUT_FILENO
     adr x1, msg
-    sub x2, x1, x1
-    add x2, x2, #(msg_end - msg)
+    mov x2, #msg_len
     mov x8, #64
     svc #0
 
+    # exit(0)
     mov x0, #0
     mov x8, #93
     svc #0

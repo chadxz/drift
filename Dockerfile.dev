@@ -1,0 +1,33 @@
+# Development Dockerfile for ARM64 assembly with LLVM toolchain
+FROM ubuntu:24.04
+
+# Install LLVM toolchain and development tools
+RUN apt-get update && \
+    apt-get install -y \
+    clang \
+    lld \
+    lldb \
+    llvm \
+    binutils \
+    binutils-aarch64-linux-gnu \
+    gdb \
+    make \
+    git \
+    curl \
+    less \
+    file \
+    strace \
+    radare2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install latest version of just
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+# Activate mise in the shell
+ENV PATH="/root/.local/bin:$PATH"
+
+# Set working directory
+WORKDIR /workspace
+
+# Default command - keep container running for interactive use
+CMD ["/bin/bash"]

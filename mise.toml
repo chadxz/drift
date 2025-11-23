@@ -4,3 +4,4 @@
 dprint = "0.50.2"
 just = "1.43.1"
 marksman = "2024-12-18"
+rust = "latest"
