@@ -1,8 +1,8 @@
 # Using Radare2 (r2) with ARM64 Assembly
 
-Radare2 (r2) is a powerful reverse engineering framework that can be used to analyze,
-disassemble, and debug your ARM64 assembly binaries. This guide covers the basics of
-using r2 to understand your compiled code.
+Radare2 (r2) is a powerful reverse engineering framework that can be used to
+analyze, disassemble, and debug your ARM64 assembly binaries. This guide covers
+the basics of using r2 to understand your compiled code.
 
 ## Opening a Binary
 
@@ -14,8 +14,8 @@ Open your binary with automatic analysis:
 r2 -A build/drift
 ```
 
-The `-A` flag performs automatic analysis, identifying functions, strings, and code
-structures.
+The `-A` flag performs automatic analysis, identifying functions, strings, and
+code structures.
 
 ### Non-Interactive Mode
 
@@ -25,7 +25,8 @@ To quickly view disassembly without entering interactive mode:
 r2 -A build/drift -c "pdf @entry0"
 ```
 
-This opens the binary, analyzes it, prints the disassembly of `entry0`, and exits.
+This opens the binary, analyzes it, prints the disassembly of `entry0`, and
+exits.
 
 ## Finding Your Code
 
@@ -37,8 +38,8 @@ Once inside r2, list all functions:
 afl
 ```
 
-This shows all functions, including `entry0` (which is r2's name for your `_start`
-function).
+This shows all functions, including `entry0` (which is r2's name for your
+`_start` function).
 
 ### Seeking to a Function
 
@@ -53,6 +54,7 @@ s <function_name>
 ```
 
 After seeking, your prompt changes to show the current address:
+
 ```
 [0xaaaab0410244]>
 ```
@@ -68,6 +70,7 @@ pdf
 ```
 
 This prints the disassembly of the current function with:
+
 - Memory addresses
 - Hexadecimal opcodes
 - ARM64 assembly instructions
@@ -95,6 +98,7 @@ pd 10 @0xaaaab0410244
 When r2 disassembles your code, you'll see differences from your source:
 
 **Your Source:**
+
 ```asm
 mov x0, #STDOUT_FILENO
 adr x1, msg
@@ -104,6 +108,7 @@ svc #0
 ```
 
 **r2 Disassembly:**
+
 ```
 movz x0, 0x1
 adr x1, loc.msg
@@ -114,8 +119,8 @@ svc 0
 
 **Key Differences:**
 
-1. **`mov` → `movz`**: Your `mov` pseudo-instruction becomes `movz` (move with zero)
-   for immediate values. This is normal and correct.
+1. **`mov` → `movz`**: Your `mov` pseudo-instruction becomes `movz` (move with
+   zero) for immediate values. This is normal and correct.
 
 2. **Constants Resolved**: All constants are shown as their actual values:
    - `STDOUT_FILENO` (1) → `0x1`
@@ -123,8 +128,8 @@ svc 0
    - `64` (write syscall) → `0x40`
    - `93` (exit syscall) → `0x5d`
 
-3. **Label Names**: r2 may rename labels (e.g., `msg` → `loc.msg`), but they refer
-   to the same memory location.
+3. **Label Names**: r2 may rename labels (e.g., `msg` → `loc.msg`), but they
+   refer to the same memory location.
 
 ### Reading the Disassembly Format
 
@@ -135,6 +140,7 @@ Each line in `pdf` output shows:
 ```
 
 Example:
+
 ```
 0xaaaab0410244  200080d2  movz x0, 0x1    ; [06] -r-x section size 32 named .text
 ```
@@ -155,12 +161,14 @@ iz
 ```
 
 This shows:
+
 - String labels (like `msg:`)
 - The actual string content
 - Memory addresses
 - String lengths
 
 Example output:
+
 ```
 0xaaaab0410264  str.Hello_from_Drift_on_ARM64_n:  "Hello from Drift on ARM64!\n"  ; len=27
 ```
@@ -174,6 +182,7 @@ iS
 ```
 
 This shows:
+
 - Section names (`.text`, `.rodata`, etc.)
 - Section addresses
 - Section sizes
@@ -216,6 +225,7 @@ V
 ```
 
 In visual mode:
+
 - **`p`**: Cycle through views (hex, disassembly, graph, etc.)
 - **`j`/`k`**: Move up/down
 - **`h`/`l`**: Move left/right
@@ -262,18 +272,21 @@ This prints both the function disassembly and all strings.
 ## Useful Commands Reference
 
 ### Navigation
+
 - `s <address>`: Seek to address
 - `s+`: Seek forward
 - `s-`: Seek backward
 - `s entry0`: Seek to function
 
 ### Disassembly
+
 - `pdf`: Print disassembly function (current)
 - `pdf @<name>`: Print disassembly of named function
 - `pd N`: Print N instructions
 - `pd N @<addr>`: Print N instructions at address
 
 ### Information
+
 - `afl`: List all functions
 - `iz`: List strings
 - `iS`: List sections
@@ -282,21 +295,25 @@ This prints both the function disassembly and all strings.
 - `il`: List libraries
 
 ### Analysis
+
 - `aa`: Analyze all (auto-analysis)
 - `axt @<name>`: Show references to symbol
 - `axf @<name>`: Show what symbol references
 
 ### Memory/Data
+
 - `px @<addr>`: Print hex dump
 - `ps @<addr>`: Print string
 - `pf @<addr>`: Print formatted data
 
 ### Visual
+
 - `V`: Enter visual mode
 - `VV`: Enter graph view
 - `V!`: Enter visual panels mode
 
 ### Exiting
+
 - `q`: Quit (may need to press multiple times)
 
 ## Tips for Understanding Your Code
@@ -307,18 +324,19 @@ This prints both the function disassembly and all strings.
 
 3. **Check `iz`**: See your strings to understand data references.
 
-4. **Follow `adr` instructions**: When you see `adr x1, loc.msg`, use `iz` to find
-   where `msg` actually is.
+4. **Follow `adr` instructions**: When you see `adr x1, loc.msg`, use `iz` to
+   find where `msg` actually is.
 
 5. **Compare addresses**: The addresses in disassembly match addresses shown in
    `iz` and `iS` output.
 
-6. **Use visual mode**: Press `V` and cycle through views with `p` to see different
-   representations of your code.
+6. **Use visual mode**: Press `V` and cycle through views with `p` to see
+   different representations of your code.
 
 ## Example: Mapping Your Source to r2 Output
 
 **Your Source (`src/hello.s`):**
+
 ```asm
 _start:
     mov x0, #STDOUT_FILENO    # Load stdout file descriptor
@@ -329,6 +347,7 @@ _start:
 ```
 
 **r2 Disassembly:**
+
 ```
 0xaaaab0410244  200080d2  movz x0, 0x1      ; x0 = 1 (STDOUT_FILENO)
 0xaaaab0410248  e1000010  adr x1, loc.msg   ; x1 = address of msg string
@@ -338,6 +357,7 @@ _start:
 ```
 
 **Correspondence:**
+
 - Line 1: `mov x0, #STDOUT_FILENO` → `movz x0, 0x1` (constant resolved to 1)
 - Line 2: `adr x1, msg` → `adr x1, loc.msg` (label renamed, same address)
 - Line 3: `mov x2, #msg_len` → `movz x2, 0x1b` (calculated length = 27 bytes)
@@ -357,5 +377,5 @@ typically more suitable (see `debugging.md`). However, r2 can be useful for:
 - Analyzing how your code compiled
 - Exploring data sections
 
-For interactive debugging with breakpoints and step-through execution, use `lldb`
-or the `just debug` command.
+For interactive debugging with breakpoints and step-through execution, use
+`lldb` or the `just debug` command.
