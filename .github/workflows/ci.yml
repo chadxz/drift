@@ -15,7 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
-      - uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3.0.0
+      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3.5.1
+        with:
+          install: true
 
-      - name: Check justfile formatting
-        run: just --fmt --check
+      - name: Check formatting
+        run: just check-format

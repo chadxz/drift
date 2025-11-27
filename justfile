@@ -59,3 +59,7 @@ debug-r2: build-debug
 # Format source files in the repository
 format:
     mise exec -- dprint fmt
+
+# Check formatting without modifying files
+check-format:
+    mise exec -- dprint check
