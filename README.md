@@ -25,5 +25,5 @@ mise install
 Format repository files:
 
 ```bash
-dprint fmt
+just format
 ```
