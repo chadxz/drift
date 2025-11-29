@@ -8,13 +8,13 @@ This walkthrough takes you **from zero to a deployed Drift web server**:
 **Part A: Building the Web Server (Assembly)**
 
 1. Minimal hello world (stdout)
-2. Create a TCP socket
+2. Create a TCP socket (IPv6 dual-stack)
 3. Bind to a port
 4. Listen for connections
 5. Accept a connection
 6. Read the HTTP request
 7. Send an HTTP response
-8. Handle multiple connections (loop)
+8. Handle multiple connections (loop) + socket options
 
 **Part B: Packaging & Deployment**
 
@@ -441,18 +441,33 @@ jj commit -m "Add minimal ARM64 hello world assembly"
 
 ---
 
-## 3. Create a TCP Socket
+## 3. Create a TCP Socket (Dual-Stack IPv6)
 
 Now we start building toward a web server. First step: create a socket.
 
+We'll use **IPv6 with dual-stack** support, which means a single socket can
+accept both IPv4 and IPv6 connections. This is the modern, recommended approach.
+
 ### 📚 Concepts to understand
 
-| Concept               | Resource                                                                                | What you'll learn                    |
-| --------------------- | --------------------------------------------------------------------------------------- | ------------------------------------ |
-| Socket programming    | [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/)                     | The classic guide to sockets         |
-| `socket()` syscall    | [man 2 socket](https://man7.org/linux/man-pages/man2/socket.2.html)                     | Create an endpoint for communication |
-| Address families      | [man 7 address_families](https://man7.org/linux/man-pages/man7/address_families.7.html) | AF_INET, AF_INET6, AF_UNIX, etc.     |
-| ARM64 syscall numbers | [syscalls.mebeim.net](https://syscalls.mebeim.net/?table=arm64/64/aarch64/latest)       | Complete ARM64 Linux syscall table   |
+| Concept               | Resource                                                                                | What you'll learn                        |
+| --------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Socket programming    | [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/)                     | The classic guide to sockets             |
+| `socket()` syscall    | [man 2 socket](https://man7.org/linux/man-pages/man2/socket.2.html)                     | Create an endpoint for communication     |
+| Address families      | [man 7 address_families](https://man7.org/linux/man-pages/man7/address_families.7.html) | AF_INET, AF_INET6, AF_UNIX, etc.         |
+| IPv6 dual-stack       | [man 7 ipv6](https://man7.org/linux/man-pages/man7/ipv6.7.html)                         | How IPv6 sockets can accept IPv4 clients |
+| ARM64 syscall numbers | [syscalls.mebeim.net](https://syscalls.mebeim.net/?table=arm64/64/aarch64/latest)       | Complete ARM64 Linux syscall table       |
+
+**Why IPv6 dual-stack?**
+
+Instead of creating separate IPv4 and IPv6 sockets, we create one IPv6 socket
+that accepts both:
+
+- Native IPv6 connections (e.g., `[::1]:8080`)
+- IPv4 connections mapped as IPv6 (e.g., `127.0.0.1` becomes `::ffff:127.0.0.1`)
+
+This is controlled by the `IPV6_V6ONLY` socket option (we'll set it in a later
+step).
 
 **The socket syscall:**
 
@@ -465,7 +480,7 @@ int socket(int domain, int type, int protocol);
 
 | Register | Argument | Value             | Meaning                          |
 | -------- | -------- | ----------------- | -------------------------------- |
-| x0       | domain   | 2 (`AF_INET`)     | IPv4 Internet protocols          |
+| x0       | domain   | 10 (`AF_INET6`)   | IPv6 Internet protocols          |
 | x1       | type     | 1 (`SOCK_STREAM`) | TCP (reliable, connection-based) |
 | x2       | protocol | 0                 | Default protocol for type        |
 | x8       | syscall# | 198               | `socket`                         |
@@ -483,7 +498,7 @@ At a high level, here’s what changed compared to the hello world step:
 // src/hello.s
 
 -// src/hello.s — Minimal hello world
-+// src/hello.s — Create a TCP socket
++// src/hello.s — Create a TCP socket (IPv6 dual-stack)
 
 - .equ STDOUT_FILENO, 1
 - .equ SYS_WRITE, 64
@@ -493,21 +508,21 @@ At a high level, here’s what changed compared to the hello world step:
 + .equ SYS_EXIT, 93
 + .equ SYS_SOCKET, 198
 +
-+ .equ AF_INET, 2
++ .equ AF_INET6, 10
 + .equ SOCK_STREAM, 1
 ```
 
 The full reference version at this step is:
 
 ```asm
-// src/hello.s — Create a TCP socket
+// src/hello.s — Create a TCP socket (IPv6 dual-stack)
 
 .equ STDOUT_FILENO, 1
 .equ SYS_WRITE, 64
 .equ SYS_EXIT, 93
 .equ SYS_SOCKET, 198
 
-.equ AF_INET, 2
+.equ AF_INET6, 10
 .equ SOCK_STREAM, 1
 
 .section .rodata
@@ -523,8 +538,8 @@ msg_socket_err_len = . - msg_socket_err
 .global _start
 
 _start:
-    // socket(AF_INET, SOCK_STREAM, 0)
-    mov     x0, #AF_INET
+    // socket(AF_INET6, SOCK_STREAM, 0)
+    mov     x0, #AF_INET6
     mov     x1, #SOCK_STREAM
     mov     x2, #0
     mov     x8, #SYS_SOCKET
@@ -593,33 +608,37 @@ just strace
 ```
 
 ```text
-socket(AF_INET, SOCK_STREAM, IPPROTO_IP) = 3
+socket(AF_INET6, SOCK_STREAM, IPPROTO_IP) = 3
 write(1, "Socket created successfully!\n", 29) = 29
 exit(0)                                 = ?
 ```
 
-The socket returned fd `3` (after stdin=0, stdout=1, stderr=2).
+The socket returned fd `3` (after stdin=0, stdout=1, stderr=2). Notice it shows
+`AF_INET6` — this is our dual-stack socket.
 
 ### 🏋️ Try it yourself
 
 1. **Try UDP instead of TCP** — Change `SOCK_STREAM` to `SOCK_DGRAM` (2). Does
    it still succeed?
 
-2. **Try an invalid domain** — Change `AF_INET` to `99`. What error message do
+2. **Try an invalid domain** — Change `AF_INET6` to `99`. What error message do
    you see? What does strace show for the return value?
 
-3. **Print the file descriptor** — This is harder! The fd is in x19. Can you
+3. **Try IPv4-only** — Change `AF_INET6` to `AF_INET` (2). It will work, but
+   you'll lose IPv6 support. We'll stick with IPv6 dual-stack.
+
+4. **Print the file descriptor** — This is harder! The fd is in x19. Can you
    print it? (Hint: you'd need to convert the integer to ASCII digits)
 
 Commit:
 
 ```bash
-jj commit -m "Add TCP socket creation"
+jj commit -m "Add TCP socket creation (IPv6 dual-stack)"
 ```
 
 ### 🔎 You are here
 
-- **You built**: an assembly program that creates a TCP socket and reports
+- **You built**: an assembly program that creates an IPv6 TCP socket and reports
   success/failure.
 - **You learned**: how to interpret syscall return values and store the socket
   fd for later use.
@@ -633,12 +652,12 @@ Now we bind our socket to an address and port.
 
 ### 📚 Concepts to understand
 
-| Concept                 | Resource                                                                  | What you'll learn                |
-| ----------------------- | ------------------------------------------------------------------------- | -------------------------------- |
-| `bind()` syscall        | [man 2 bind](https://man7.org/linux/man-pages/man2/bind.2.html)           | Assign address to socket         |
-| `sockaddr_in` struct    | [man 7 ip](https://man7.org/linux/man-pages/man7/ip.7.html)               | IPv4 socket address structure    |
-| Byte order (endianness) | [Beej's Guide - Byte Order](https://beej.us/guide/bgnet/html/#byte-order) | Network byte order is big-endian |
-| `INADDR_ANY`            | [man 7 ip](https://man7.org/linux/man-pages/man7/ip.7.html)               | Bind to all interfaces (0.0.0.0) |
+| Concept                 | Resource                                                                  | What you'll learn                  |
+| ----------------------- | ------------------------------------------------------------------------- | ---------------------------------- |
+| `bind()` syscall        | [man 2 bind](https://man7.org/linux/man-pages/man2/bind.2.html)           | Assign address to socket           |
+| `sockaddr_in6` struct   | [man 7 ipv6](https://man7.org/linux/man-pages/man7/ipv6.7.html)           | IPv6 socket address structure      |
+| Byte order (endianness) | [Beej's Guide - Byte Order](https://beej.us/guide/bgnet/html/#byte-order) | Network byte order is big-endian   |
+| `in6addr_any`           | [man 7 ipv6](https://man7.org/linux/man-pages/man7/ipv6.7.html)           | Bind to all interfaces (::)        |
 
 **The bind syscall:**
 
@@ -647,16 +666,29 @@ int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 // ARM64 syscall number: 200
 ```
 
-**The sockaddr_in structure (16 bytes):**
+**The sockaddr_in6 structure (28 bytes):**
 
 ```c
-struct sockaddr_in {
-    uint16_t sin_family;   // AF_INET (2)
-    uint16_t sin_port;     // Port in network byte order (big-endian!)
-    uint32_t sin_addr;     // IP address (INADDR_ANY = 0)
-    uint8_t  sin_zero[8];  // Padding to 16 bytes
+struct sockaddr_in6 {
+    uint16_t sin6_family;   // AF_INET6 (10)
+    uint16_t sin6_port;     // Port in network byte order (big-endian!)
+    uint32_t sin6_flowinfo; // Flow info (usually 0)
+    uint8_t  sin6_addr[16]; // IPv6 address (in6addr_any = ::)
+    uint32_t sin6_scope_id; // Scope ID (usually 0)
 };
 ```
+
+**Comparing IPv4 vs IPv6 address structures:**
+
+| Field        | `sockaddr_in` (IPv4) | `sockaddr_in6` (IPv6)      |
+| ------------ | -------------------- | -------------------------- |
+| Family       | `AF_INET` (2)        | `AF_INET6` (10)            |
+| Port         | 2 bytes              | 2 bytes                    |
+| Flow info    | —                    | 4 bytes                    |
+| Address      | 4 bytes              | 16 bytes                   |
+| Scope ID     | —                    | 4 bytes                    |
+| Padding      | 8 bytes              | —                          |
+| **Total**    | **16 bytes**         | **28 bytes**               |
 
 **⚠️ Network byte order:** Port numbers must be in big-endian format. Port 8080
 (0x1F90) becomes 0x901F when stored in memory on a little-endian system.
@@ -666,6 +698,9 @@ Port 8080 = 0x1F90
 Big-endian (network order): 0x1F, 0x90
 As 16-bit value on little-endian: 0x901F
 ```
+
+**The IPv6 "any" address (`::`):** This is the IPv6 equivalent of `0.0.0.0`. It's
+16 bytes of zeros, meaning "bind to all interfaces."
 
 ### 4.1 Update `src/hello.s` to bind
 
@@ -679,9 +714,8 @@ Compared to the previous step, the key changes are:
 +.equ SYS_BIND, 200
 
  // Socket constants
- .equ AF_INET, 2
+ .equ AF_INET6, 10
  .equ SOCK_STREAM, 1
-+.equ INADDR_ANY, 0
 +
 +// Port 8080 in big-endian: 0x1F90 → 0x901F
 +.equ PORT_BE, 0x901F
@@ -690,7 +724,7 @@ Compared to the previous step, the key changes are:
 The full reference version at this step is:
 
 ```asm
-// src/hello.s — Create socket and bind to port 8080
+// src/hello.s — Create socket and bind to [::]:8080
 
 .equ STDOUT_FILENO, 1
 .equ SYS_WRITE, 64
@@ -698,9 +732,8 @@ The full reference version at this step is:
 .equ SYS_SOCKET, 198
 .equ SYS_BIND, 200
 
-.equ AF_INET, 2
+.equ AF_INET6, 10
 .equ SOCK_STREAM, 1
-.equ INADDR_ANY, 0
 
 // Port 8080 in big-endian: 0x1F90 → 0x901F
 .equ PORT_BE, 0x901F
@@ -711,7 +744,7 @@ msg_socket_ok:
 msg_socket_ok_len = . - msg_socket_ok
 
 msg_bind_ok:
-    .ascii "Bound to port 8080\n"
+    .ascii "Bound to [::]:8080\n"
 msg_bind_ok_len = . - msg_bind_ok
 
 msg_error:
@@ -719,12 +752,13 @@ msg_error:
 msg_error_len = . - msg_error
 
 .section .data
-// sockaddr_in structure (16 bytes)
+// sockaddr_in6 structure (28 bytes)
 sockaddr:
-    .hword AF_INET          // sin_family (2 bytes)
-    .hword PORT_BE          // sin_port (2 bytes, big-endian)
-    .word  INADDR_ANY       // sin_addr (4 bytes)
-    .skip  8                // sin_zero padding (8 bytes)
+    .hword AF_INET6         // sin6_family (2 bytes)
+    .hword PORT_BE          // sin6_port (2 bytes, big-endian)
+    .word  0                // sin6_flowinfo (4 bytes)
+    .fill  16, 1, 0         // sin6_addr = :: (16 bytes of zeros)
+    .word  0                // sin6_scope_id (4 bytes)
 sockaddr_len = . - sockaddr
 
 .section .text
@@ -732,7 +766,7 @@ sockaddr_len = . - sockaddr
 
 _start:
     // === Create socket ===
-    mov     x0, #AF_INET
+    mov     x0, #AF_INET6
     mov     x1, #SOCK_STREAM
     mov     x2, #0
     mov     x8, #SYS_SOCKET
@@ -751,13 +785,13 @@ _start:
     // === Bind socket ===
     mov     x0, x19             // sockfd
     adr     x1, sockaddr        // addr
-    mov     x2, #sockaddr_len   // addrlen
+    mov     x2, #sockaddr_len   // addrlen (28 for IPv6)
     mov     x8, #SYS_BIND
     svc     #0
     cmp     x0, #0
     b.lt    error
 
-    // Print "Bound to port 8080"
+    // Print "Bound to [::]:8080"
     mov     x0, #STDOUT_FILENO
     adr     x1, msg_bind_ok
     mov     x2, #msg_bind_ok_len
@@ -786,11 +820,11 @@ exit_err:
 
 **New assembly directives:**
 
-| Directive | Size    | Purpose                         |
-| --------- | ------- | ------------------------------- |
-| `.hword`  | 2 bytes | Half-word (16-bit value)        |
-| `.word`   | 4 bytes | Word (32-bit value)             |
-| `.skip N` | N bytes | Reserve N bytes of zero padding |
+| Directive        | Size    | Purpose                            |
+| ---------------- | ------- | ---------------------------------- |
+| `.hword`         | 2 bytes | Half-word (16-bit value)           |
+| `.word`          | 4 bytes | Word (32-bit value)                |
+| `.fill N, S, V`  | N×S     | Fill N items of S bytes with V     |
 
 ### 4.2 Test it
 
@@ -802,7 +836,7 @@ Expected output:
 
 ```text
 Socket created
-Bound to port 8080
+Bound to [::]:8080
 ```
 
 ### 🔍 Watch the bind syscall
@@ -812,23 +846,25 @@ just strace
 ```
 
 ```text
-socket(AF_INET, SOCK_STREAM, IPPROTO_IP) = 3
+socket(AF_INET6, SOCK_STREAM, IPPROTO_IP) = 3
 write(1, "Socket created\n", 15)        = 15
-bind(3, {sa_family=AF_INET, sin_port=htons(8080), sin_addr=inet_addr("0.0.0.0")}, 16) = 0
-write(1, "Bound to port 8080\n", 19)    = 19
+bind(3, {sa_family=AF_INET6, sin6_port=htons(8080), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::", &sin6_addr), sin6_scope_id=0}, 28) = 0
+write(1, "Bound to [::]:8080\n", 19)    = 19
 exit(0)                                 = ?
 ```
 
-Notice how strace decodes the sockaddr structure: `sin_port=htons(8080)` shows
-it correctly interpreted our big-endian port!
+Notice how strace decodes the sockaddr_in6 structure: it shows `AF_INET6`, the
+port `htons(8080)`, and the address `::` (all zeros = bind to all interfaces).
+The size is now 28 bytes instead of 16.
 
 ### 🏋️ Try it yourself
 
 1. **Change the port to 3000** — Calculate the big-endian value for port 3000.
    (Hint: 3000 = 0x0BB8, so big-endian = 0xB80B)
 
-2. **Bind to localhost only** — Change `INADDR_ANY` (0) to `0x0100007F`
-   (127.0.0.1 in little-endian). Verify with strace.
+2. **Bind to localhost only** — Change the 16 bytes of zeros to `::1` (loopback).
+   The IPv6 loopback address is 15 bytes of 0x00 followed by 0x01. Verify with
+   strace.
 
 3. **Try binding twice** — Duplicate the bind syscall. What error do you get?
    What does strace show?
@@ -839,13 +875,14 @@ it correctly interpreted our big-endian port!
 Commit:
 
 ```bash
-jj commit -m "Add socket bind to port 8080"
+jj commit -m "Add socket bind to [::]:8080"
 ```
 
 ### 🔎 You are here
 
-- **You built**: a socket server that successfully binds to `0.0.0.0:8080`.
-- **You learned**: how to lay out a `sockaddr_in` struct in memory and handle
+- **You built**: a socket server that successfully binds to `[::]:8080` (all
+  interfaces, IPv4 and IPv6).
+- **You learned**: how to lay out a `sockaddr_in6` struct in memory and handle
   byte order for ports.
 - **Next**: mark the socket as a listening server with `listen()`.
 
@@ -893,9 +930,8 @@ This step mostly wires in one more syscall and a `print` helper:
 +.equ SYS_LISTEN, 201
 
  // Server configuration
- .equ AF_INET, 2
+ .equ AF_INET6, 10
  .equ SOCK_STREAM, 1
- .equ INADDR_ANY, 0
  .equ PORT_BE, 0x901F
 +.equ BACKLOG, 1
 ```
@@ -903,7 +939,7 @@ This step mostly wires in one more syscall and a `print` helper:
 The full reference version at this step is:
 
 ```asm
-// src/hello.s — Socket, bind, and listen
+// src/hello.s — Socket, bind, and listen (IPv6 dual-stack)
 
 .equ STDOUT_FILENO, 1
 .equ SYS_WRITE, 64
@@ -912,9 +948,8 @@ The full reference version at this step is:
 .equ SYS_BIND, 200
 .equ SYS_LISTEN, 201
 
-.equ AF_INET, 2
+.equ AF_INET6, 10
 .equ SOCK_STREAM, 1
-.equ INADDR_ANY, 0
 .equ PORT_BE, 0x901F        // 8080 big-endian
 .equ BACKLOG, 1
 
@@ -924,7 +959,7 @@ msg_socket:
 msg_socket_len = . - msg_socket
 
 msg_bind:
-    .ascii "Bound to port 8080\n"
+    .ascii "Bound to [::]:8080\n"
 msg_bind_len = . - msg_bind
 
 msg_listen:
@@ -936,11 +971,13 @@ msg_error:
 msg_error_len = . - msg_error
 
 .section .data
+// sockaddr_in6 structure (28 bytes)
 sockaddr:
-    .hword AF_INET
-    .hword PORT_BE
-    .word  INADDR_ANY
-    .skip  8
+    .hword AF_INET6         // sin6_family (2 bytes)
+    .hword PORT_BE          // sin6_port (2 bytes, big-endian)
+    .word  0                // sin6_flowinfo (4 bytes)
+    .fill  16, 1, 0         // sin6_addr = :: (16 bytes of zeros)
+    .word  0                // sin6_scope_id (4 bytes)
 sockaddr_len = . - sockaddr
 
 .section .text
@@ -948,7 +985,7 @@ sockaddr_len = . - sockaddr
 
 _start:
     // === Create socket ===
-    mov     x0, #AF_INET
+    mov     x0, #AF_INET6
     mov     x1, #SOCK_STREAM
     mov     x2, #0
     mov     x8, #SYS_SOCKET
@@ -1053,7 +1090,7 @@ Expected output:
 
 ```text
 Socket created
-Bound to port 8080
+Bound to [::]:8080
 Listening for connections...
 ```
 
@@ -1064,10 +1101,10 @@ just strace
 ```
 
 ```text
-socket(AF_INET, SOCK_STREAM, IPPROTO_IP) = 3
+socket(AF_INET6, SOCK_STREAM, IPPROTO_IP) = 3
 write(1, "Socket created\n", 15)        = 15
-bind(3, {sa_family=AF_INET, sin_port=htons(8080), ...}, 16) = 0
-write(1, "Bound to port 8080\n", 19)    = 19
+bind(3, {sa_family=AF_INET6, sin6_port=htons(8080), ...}, 28) = 0
+write(1, "Bound to [::]:8080\n", 19)    = 19
 listen(3, 1)                            = 0
 write(1, "Listening for connections...\n", 29) = 29
 exit(0)                                 = ?
@@ -1087,12 +1124,13 @@ exit(0)                                 = ?
 Commit:
 
 ```bash
-jj commit -m "Add listen syscall"
+jj commit -m "Add listen syscall (IPv6 dual-stack)"
 ```
 
 ### 🔎 You are here
 
-- **You built**: a server socket that is actively listening on port 8080.
+- **You built**: a server socket that is actively listening on `[::]:8080`
+  (IPv4 and IPv6).
 - **You learned**: how to factor out a tiny `print` helper and how `bl`/`ret`
   interact with the stack.
 - **Next**: accept a client connection and start behaving like a real server.
@@ -1157,7 +1195,7 @@ We now add a new syscall and store a separate client socket:
 The full reference version at this step is:
 
 ```asm
-// src/hello.s — Accept one connection
+// src/hello.s — Accept one connection (IPv6 dual-stack)
 
 .equ STDOUT_FILENO, 1
 .equ SYS_WRITE, 64
@@ -1168,9 +1206,8 @@ The full reference version at this step is:
 .equ SYS_LISTEN, 201
 .equ SYS_ACCEPT, 202
 
-.equ AF_INET, 2
+.equ AF_INET6, 10
 .equ SOCK_STREAM, 1
-.equ INADDR_ANY, 0
 .equ PORT_BE, 0x901F
 .equ BACKLOG, 1
 
@@ -1180,7 +1217,7 @@ msg_socket:
 msg_socket_len = . - msg_socket
 
 msg_bind:
-    .ascii "Bound to port 8080\n"
+    .ascii "Bound to [::]:8080\n"
 msg_bind_len = . - msg_bind
 
 msg_listen:
@@ -1196,11 +1233,13 @@ msg_error:
 msg_error_len = . - msg_error
 
 .section .data
+// sockaddr_in6 structure (28 bytes)
 sockaddr:
-    .hword AF_INET
-    .hword PORT_BE
-    .word  INADDR_ANY
-    .skip  8
+    .hword AF_INET6         // sin6_family (2 bytes)
+    .hword PORT_BE          // sin6_port (2 bytes, big-endian)
+    .word  0                // sin6_flowinfo (4 bytes)
+    .fill  16, 1, 0         // sin6_addr = :: (16 bytes of zeros)
+    .word  0                // sin6_scope_id (4 bytes)
 sockaddr_len = . - sockaddr
 
 .section .text
@@ -1208,7 +1247,7 @@ sockaddr_len = . - sockaddr
 
 _start:
     // === Create socket ===
-    mov     x0, #AF_INET
+    mov     x0, #AF_INET6
     mov     x1, #SOCK_STREAM
     mov     x2, #0
     mov     x8, #SYS_SOCKET
@@ -1333,8 +1372,8 @@ haven't sent a response yet (that's next!).
 Run `just strace-server` in Terminal 1, then curl in Terminal 2:
 
 ```text
-socket(AF_INET, SOCK_STREAM, IPPROTO_IP) = 3
-bind(3, {sa_family=AF_INET, sin_port=htons(8080), ...}, 16) = 0
+socket(AF_INET6, SOCK_STREAM, IPPROTO_IP) = 3
+bind(3, {sa_family=AF_INET6, sin6_port=htons(8080), ...}, 28) = 0
 listen(3, 1)                            = 0
 write(1, "Listening on http://localhost:8080\n", 35) = 35
 accept(3, NULL, NULL                    <-- blocks here, waiting...
@@ -1353,7 +1392,10 @@ exit(0)                                 = ?
 2. **Multiple connections** — Start the server, connect with curl, then quickly
    try another curl. Does the second one work? Why or why not?
 
-3. **Get client address** — Modify the code to pass a sockaddr buffer to
+3. **Test IPv6** — Try `curl http://[::1]:8080/` to connect via IPv6 loopback.
+   Does it work?
+
+4. **Get client address** — Modify the code to pass a sockaddr_in6 buffer to
    accept() instead of NULL. Can you print the client's IP?
 
 For deeper background on Unix networking and systems programming (beyond this
@@ -1363,12 +1405,13 @@ walkthrough and Beej), see the networking and OS recommendations in
 Commit:
 
 ```bash
-jj commit -m "Add accept syscall - server accepts connections"
+jj commit -m "Add accept syscall - server accepts connections (IPv6 dual-stack)"
 ```
 
 ### 🔎 You are here
 
-- **You built**: a server that accepts a single TCP connection and then exits.
+- **You built**: a server that accepts a single TCP connection (IPv4 or IPv6)
+  and then exits.
 - **You learned**: how blocking syscalls behave and how to manage a separate
   client socket fd.
 - **Next**: actually read the HTTP request and send a proper HTTP response.
@@ -1436,7 +1479,7 @@ If you want to skim, you can focus on the new `.bss` buffer, the `accept_loop`
 label, and the `read`/`write` calls.
 
 ```asm
-// src/hello.s — Minimal HTTP server
+// src/hello.s — Minimal HTTP server (IPv6 dual-stack)
 
 .equ STDOUT_FILENO, 1
 .equ SYS_READ, 63
@@ -1448,9 +1491,8 @@ label, and the `read`/`write` calls.
 .equ SYS_LISTEN, 201
 .equ SYS_ACCEPT, 202
 
-.equ AF_INET, 2
+.equ AF_INET6, 10
 .equ SOCK_STREAM, 1
-.equ INADDR_ANY, 0
 .equ PORT_BE, 0x901F        // 8080 big-endian
 .equ BACKLOG, 10
 
@@ -1474,11 +1516,13 @@ http_response:
 http_response_len = . - http_response
 
 .section .data
+// sockaddr_in6 structure (28 bytes)
 sockaddr:
-    .hword AF_INET
-    .hword PORT_BE
-    .word  INADDR_ANY
-    .skip  8
+    .hword AF_INET6         // sin6_family (2 bytes)
+    .hword PORT_BE          // sin6_port (2 bytes, big-endian)
+    .word  0                // sin6_flowinfo (4 bytes)
+    .fill  16, 1, 0         // sin6_addr = :: (16 bytes of zeros)
+    .word  0                // sin6_scope_id (4 bytes)
 sockaddr_len = . - sockaddr
 
 .section .bss
@@ -1489,7 +1533,7 @@ sockaddr_len = . - sockaddr
 
 _start:
     // === Create socket ===
-    mov     x0, #AF_INET
+    mov     x0, #AF_INET6
     mov     x1, #SOCK_STREAM
     mov     x2, #0
     mov     x8, #SYS_SOCKET
@@ -1678,26 +1722,35 @@ jj commit -m "Complete HTTP server - reads request, sends response"
 
 ---
 
-## 8. Polish: SO_REUSEADDR and Graceful Cleanup
+## 8. Polish: SO_REUSEADDR, IPV6_V6ONLY, and Graceful Cleanup
 
-One common issue: if you restart the server quickly, bind may fail with "Address
-already in use". Let's fix that with `SO_REUSEADDR`.
+Two common issues to fix:
+
+1. **Quick restarts fail**: If you restart the server quickly, bind may fail
+   with "Address already in use". Fix: `SO_REUSEADDR`.
+2. **Dual-stack needs explicit opt-in on some systems**: While Linux usually
+   enables dual-stack by default, we explicitly set `IPV6_V6ONLY=0` to be sure.
 
 ### 📚 Concepts to understand
 
-| Concept                | Resource                                                                          | What you'll learn                   |
-| ---------------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
-| `setsockopt()` syscall | [man 2 setsockopt](https://man7.org/linux/man-pages/man2/setsockopt.2.html)       | Set socket options                  |
-| `SO_REUSEADDR`         | [man 7 socket](https://man7.org/linux/man-pages/man7/socket.7.html)               | Allow reuse of local addresses      |
-| TIME_WAIT state        | [TCP TIME_WAIT](https://vincent.bernat.ch/en/blog/2014-tcp-time-wait-state-linux) | Why ports stay "in use" after close |
+| Concept                | Resource                                                                          | What you'll learn                          |
+| ---------------------- | --------------------------------------------------------------------------------- | ------------------------------------------ |
+| `setsockopt()` syscall | [man 2 setsockopt](https://man7.org/linux/man-pages/man2/setsockopt.2.html)       | Set socket options                         |
+| `SO_REUSEADDR`         | [man 7 socket](https://man7.org/linux/man-pages/man7/socket.7.html)               | Allow reuse of local addresses             |
+| `IPV6_V6ONLY`          | [man 7 ipv6](https://man7.org/linux/man-pages/man7/ipv6.7.html)                   | Control IPv4-mapped IPv6 addresses         |
+| TIME_WAIT state        | [TCP TIME_WAIT](https://vincent.bernat.ch/en/blog/2014-tcp-time-wait-state-linux) | Why ports stay "in use" after close        |
 
-**Why does this happen?**
+**Why SO_REUSEADDR?**
 
 When you close a TCP connection, the port enters TIME_WAIT state for ~60 seconds
 to handle any delayed packets. During this time, `bind()` fails with EADDRINUSE.
+`SO_REUSEADDR` tells the kernel "let me bind even if the port is in TIME_WAIT."
 
-**The fix:** `SO_REUSEADDR` tells the kernel "let me bind even if the port is in
-TIME_WAIT."
+**Why IPV6_V6ONLY=0?**
+
+By default on most Linux systems, an IPv6 socket can accept both IPv6 and
+IPv4-mapped connections (dual-stack). Setting `IPV6_V6ONLY=0` explicitly ensures
+this behavior, making the server portable across different configurations.
 
 **The setsockopt syscall:**
 
@@ -1707,10 +1760,12 @@ int setsockopt(int sockfd, int level, int optname,
 // ARM64 syscall number: 208
 ```
 
-### 8.1 Updated `src/hello.s` with SO_REUSEADDR
+### 8.1 Updated `src/hello.s` with socket options
 
-Here we only touch the socket setup: we call `setsockopt()` before `bind()` and
-add a tiny `reuseaddr_val` in `.data`:
+Here we call `setsockopt()` twice before `bind()`:
+
+1. `IPV6_V6ONLY=0` — enable dual-stack (accept IPv4 and IPv6)
+2. `SO_REUSEADDR=1` — allow quick restarts
 
 ```diff
 // src/hello.s
@@ -1722,12 +1777,14 @@ add a tiny `reuseaddr_val` in `.data`:
  // Socket options
 +.equ SOL_SOCKET, 1
 +.equ SO_REUSEADDR, 2
++.equ IPPROTO_IPV6, 41
++.equ IPV6_V6ONLY, 26
 ```
 
 The full reference version at this step is:
 
 ```asm
-// src/hello.s — HTTP server with SO_REUSEADDR
+// src/hello.s — HTTP server with SO_REUSEADDR and IPV6_V6ONLY (IPv6 dual-stack)
 
 .equ STDOUT_FILENO, 1
 .equ SYS_READ, 63
@@ -1740,11 +1797,12 @@ The full reference version at this step is:
 .equ SYS_ACCEPT, 202
 .equ SYS_SETSOCKOPT, 208
 
-.equ AF_INET, 2
+.equ AF_INET6, 10
 .equ SOCK_STREAM, 1
 .equ SOL_SOCKET, 1
 .equ SO_REUSEADDR, 2
-.equ INADDR_ANY, 0
+.equ IPPROTO_IPV6, 41
+.equ IPV6_V6ONLY, 26
 .equ PORT_BE, 0x901F        // 8080 big-endian
 .equ BACKLOG, 10
 
@@ -1767,17 +1825,21 @@ http_response:
 http_response_len = . - http_response
 
 .section .data
+// sockaddr_in6 structure (28 bytes)
 sockaddr:
-    .hword AF_INET
-    .hword PORT_BE
-    .word  INADDR_ANY
-    .skip  8
+    .hword AF_INET6         // sin6_family (2 bytes)
+    .hword PORT_BE          // sin6_port (2 bytes, big-endian)
+    .word  0                // sin6_flowinfo (4 bytes)
+    .fill  16, 1, 0         // sin6_addr = :: (16 bytes of zeros)
+    .word  0                // sin6_scope_id (4 bytes)
 sockaddr_len = . - sockaddr
 
-// Value for SO_REUSEADDR (int = 1)
-reuseaddr_val:
-    .word 1
-reuseaddr_len = 4
+// Socket option values
+optval_zero:
+    .word 0                 // For IPV6_V6ONLY = 0 (enable dual-stack)
+optval_one:
+    .word 1                 // For SO_REUSEADDR = 1
+optval_len = 4
 
 .section .bss
     .lcomm request_buf, 1024
@@ -1787,7 +1849,7 @@ reuseaddr_len = 4
 
 _start:
     // === Create socket ===
-    mov     x0, #AF_INET
+    mov     x0, #AF_INET6
     mov     x1, #SOCK_STREAM
     mov     x2, #0
     mov     x8, #SYS_SOCKET
@@ -1796,12 +1858,22 @@ _start:
     b.lt    error
     mov     x19, x0
 
-    // === Set SO_REUSEADDR ===
+    // === Set IPV6_V6ONLY = 0 (enable dual-stack: accept IPv4 and IPv6) ===
+    mov     x0, x19
+    mov     x1, #IPPROTO_IPV6
+    mov     x2, #IPV6_V6ONLY
+    adr     x3, optval_zero
+    mov     x4, #optval_len
+    mov     x8, #SYS_SETSOCKOPT
+    svc     #0
+    // Ignore errors, proceed anyway
+
+    // === Set SO_REUSEADDR = 1 (allow quick restarts) ===
     mov     x0, x19
     mov     x1, #SOL_SOCKET
     mov     x2, #SO_REUSEADDR
-    adr     x3, reuseaddr_val
-    mov     x4, #reuseaddr_len
+    adr     x3, optval_one
+    mov     x4, #optval_len
     mov     x8, #SYS_SETSOCKOPT
     svc     #0
     // Ignore errors, proceed anyway
@@ -1875,27 +1947,30 @@ error:
 
 Now you can restart the server immediately without waiting for TIME_WAIT!
 
-#### Robustness: SO_REUSEADDR tradeoffs
+#### Robustness: socket options tradeoffs
 
 - We ignore `setsockopt` errors for simplicity; a hardened server would log and
-  abort if `SO_REUSEADDR` fails.
+  abort if critical options fail.
 - We don't handle graceful shutdown (signals, draining connections); Ctrl+C just
   terminates the process and lets the kernel reclaim resources.
 - We still assume simple, short-lived connections; long-lived production servers
   typically track connection state and health more carefully.
 
-### 🔍 Verify SO_REUSEADDR in strace
+### 🔍 Verify socket options in strace
 
 ```bash
 just strace-server
 ```
 
 ```text
-socket(AF_INET, SOCK_STREAM, IPPROTO_IP) = 3
+socket(AF_INET6, SOCK_STREAM, IPPROTO_IP) = 3
+setsockopt(3, SOL_IPV6, IPV6_V6ONLY, [0], 4) = 0
 setsockopt(3, SOL_SOCKET, SO_REUSEADDR, [1], 4) = 0
-bind(3, {sa_family=AF_INET, sin_port=htons(8080), ...}, 16) = 0
+bind(3, {sa_family=AF_INET6, sin6_port=htons(8080), ...}, 28) = 0
 ...
 ```
+
+You can see both socket options being set before bind!
 
 ### 🏋️ Try it yourself
 
@@ -1905,21 +1980,26 @@ bind(3, {sa_family=AF_INET, sin_port=htons(8080), ...}, 16) = 0
 2. **Remove SO_REUSEADDR** — Comment it out and try the quick restart test. What
    error do you see?
 
-3. **Add SO_REUSEPORT** — This allows multiple processes to bind to the same
-   port. Add it (value = 15 on Linux). Does it work?
+3. **Test dual-stack** — With the server running, try both:
+   - `curl http://127.0.0.1:8080/` (IPv4)
+   - `curl http://[::1]:8080/` (IPv6)
+   Both should work!
+
+4. **Disable dual-stack** — Change `optval_zero` to `optval_one` for
+   `IPV6_V6ONLY`. Now try `curl http://127.0.0.1:8080/`. What happens?
 
 Commit:
 
 ```bash
-jj commit -m "Add SO_REUSEADDR for quick restarts"
+jj commit -m "Add SO_REUSEADDR and IPV6_V6ONLY for dual-stack support"
 ```
 
 ### 🔎 You are here
 
-- **You built**: a small but usable HTTP server that survives quick restarts on
-  the same port.
+- **You built**: a dual-stack (IPv4 + IPv6) HTTP server that survives quick
+  restarts on the same port.
 - **You learned**: how to tweak socket options with `setsockopt` to solve common
-  operational issues.
+  operational issues and enable dual-stack networking.
 - **Next**: package this binary into an ARM64 Docker image and ship it.
 
 ---
@@ -2510,6 +2590,7 @@ VERSION=v0.2.0 just deploy
 You now have:
 
 - ✅ A **pure ARM64 assembly HTTP server**
+- ✅ Supporting both **IPv4 and IPv6** (dual-stack)
 - ✅ Built from scratch using only **Linux syscalls**
 - ✅ Packaged as an **ARM64 Docker image**
 - ✅ Hosted on **GitHub Container Registry**
@@ -2537,22 +2618,46 @@ You now have:
 
 ### Common Assembly Directives
 
-| Directive           | Purpose                       |
-| ------------------- | ----------------------------- |
-| `.equ NAME, VALUE`  | Define constant (no memory)   |
-| `.section .text`    | Code section                  |
-| `.section .rodata`  | Read-only data                |
-| `.section .data`    | Writable data                 |
-| `.section .bss`     | Uninitialized data            |
-| `.global SYMBOL`    | Export symbol                 |
-| `.ascii "str"`      | String (no null terminator)   |
-| `.asciz "str"`      | String (with null terminator) |
-| `.byte VALUE`       | 1 byte                        |
-| `.hword VALUE`      | 2 bytes                       |
-| `.word VALUE`       | 4 bytes                       |
-| `.quad VALUE`       | 8 bytes                       |
-| `.skip N`           | Reserve N bytes               |
-| `.lcomm NAME, SIZE` | Reserve SIZE bytes in .bss    |
+| Directive           | Purpose                           |
+| ------------------- | --------------------------------- |
+| `.equ NAME, VALUE`  | Define constant (no memory)       |
+| `.section .text`    | Code section                      |
+| `.section .rodata`  | Read-only data                    |
+| `.section .data`    | Writable data                     |
+| `.section .bss`     | Uninitialized data                |
+| `.global SYMBOL`    | Export symbol                     |
+| `.ascii "str"`      | String (no null terminator)       |
+| `.asciz "str"`      | String (with null terminator)     |
+| `.byte VALUE`       | 1 byte                            |
+| `.hword VALUE`      | 2 bytes                           |
+| `.word VALUE`       | 4 bytes                           |
+| `.quad VALUE`       | 8 bytes                           |
+| `.skip N`           | Reserve N bytes                   |
+| `.fill N, S, V`     | Fill N items of S bytes with V    |
+| `.lcomm NAME, SIZE` | Reserve SIZE bytes in .bss        |
+
+### Socket Constants (IPv6 Dual-Stack)
+
+| Constant       | Value | Purpose                              |
+| -------------- | ----- | ------------------------------------ |
+| `AF_INET6`     | 10    | IPv6 address family                  |
+| `SOCK_STREAM`  | 1     | TCP socket type                      |
+| `SOL_SOCKET`   | 1     | Socket-level options                 |
+| `SO_REUSEADDR` | 2     | Allow address reuse                  |
+| `IPPROTO_IPV6` | 41    | IPv6 protocol options                |
+| `IPV6_V6ONLY`  | 26    | IPv6-only or dual-stack (0=dual)     |
+
+### sockaddr_in6 Structure (28 bytes)
+
+```
+Offset  Size  Field           Description
+──────  ────  ─────────────   ─────────────────────────
+0       2     sin6_family     AF_INET6 (10)
+2       2     sin6_port       Port (big-endian)
+4       4     sin6_flowinfo   Flow info (usually 0)
+8       16    sin6_addr       IPv6 address (:: = all zeros)
+24      4     sin6_scope_id   Scope ID (usually 0)
+```
 
 ### Socket Syscalls (ARM64)
 
