@@ -652,12 +652,12 @@ Now we bind our socket to an address and port.
 
 ### 📚 Concepts to understand
 
-| Concept                 | Resource                                                                  | What you'll learn                  |
-| ----------------------- | ------------------------------------------------------------------------- | ---------------------------------- |
-| `bind()` syscall        | [man 2 bind](https://man7.org/linux/man-pages/man2/bind.2.html)           | Assign address to socket           |
-| `sockaddr_in6` struct   | [man 7 ipv6](https://man7.org/linux/man-pages/man7/ipv6.7.html)           | IPv6 socket address structure      |
-| Byte order (endianness) | [Beej's Guide - Byte Order](https://beej.us/guide/bgnet/html/#byte-order) | Network byte order is big-endian   |
-| `in6addr_any`           | [man 7 ipv6](https://man7.org/linux/man-pages/man7/ipv6.7.html)           | Bind to all interfaces (::)        |
+| Concept                 | Resource                                                                  | What you'll learn                |
+| ----------------------- | ------------------------------------------------------------------------- | -------------------------------- |
+| `bind()` syscall        | [man 2 bind](https://man7.org/linux/man-pages/man2/bind.2.html)           | Assign address to socket         |
+| `sockaddr_in6` struct   | [man 7 ipv6](https://man7.org/linux/man-pages/man7/ipv6.7.html)           | IPv6 socket address structure    |
+| Byte order (endianness) | [Beej's Guide - Byte Order](https://beej.us/guide/bgnet/html/#byte-order) | Network byte order is big-endian |
+| `in6addr_any`           | [man 7 ipv6](https://man7.org/linux/man-pages/man7/ipv6.7.html)           | Bind to all interfaces (::)      |
 
 **The bind syscall:**
 
@@ -680,15 +680,15 @@ struct sockaddr_in6 {
 
 **Comparing IPv4 vs IPv6 address structures:**
 
-| Field        | `sockaddr_in` (IPv4) | `sockaddr_in6` (IPv6)      |
-| ------------ | -------------------- | -------------------------- |
-| Family       | `AF_INET` (2)        | `AF_INET6` (10)            |
-| Port         | 2 bytes              | 2 bytes                    |
-| Flow info    | —                    | 4 bytes                    |
-| Address      | 4 bytes              | 16 bytes                   |
-| Scope ID     | —                    | 4 bytes                    |
-| Padding      | 8 bytes              | —                          |
-| **Total**    | **16 bytes**         | **28 bytes**               |
+| Field     | `sockaddr_in` (IPv4) | `sockaddr_in6` (IPv6) |
+| --------- | -------------------- | --------------------- |
+| Family    | `AF_INET` (2)        | `AF_INET6` (10)       |
+| Port      | 2 bytes              | 2 bytes               |
+| Flow info | —                    | 4 bytes               |
+| Address   | 4 bytes              | 16 bytes              |
+| Scope ID  | —                    | 4 bytes               |
+| Padding   | 8 bytes              | —                     |
+| **Total** | **16 bytes**         | **28 bytes**          |
 
 **⚠️ Network byte order:** Port numbers must be in big-endian format. Port 8080
 (0x1F90) becomes 0x901F when stored in memory on a little-endian system.
@@ -699,8 +699,8 @@ Big-endian (network order): 0x1F, 0x90
 As 16-bit value on little-endian: 0x901F
 ```
 
-**The IPv6 "any" address (`::`):** This is the IPv6 equivalent of `0.0.0.0`. It's
-16 bytes of zeros, meaning "bind to all interfaces."
+**The IPv6 "any" address (`::`):** This is the IPv6 equivalent of `0.0.0.0`.
+It's 16 bytes of zeros, meaning "bind to all interfaces."
 
 ### 4.1 Update `src/hello.s` to bind
 
@@ -820,11 +820,11 @@ exit_err:
 
 **New assembly directives:**
 
-| Directive        | Size    | Purpose                            |
-| ---------------- | ------- | ---------------------------------- |
-| `.hword`         | 2 bytes | Half-word (16-bit value)           |
-| `.word`          | 4 bytes | Word (32-bit value)                |
-| `.fill N, S, V`  | N×S     | Fill N items of S bytes with V     |
+| Directive       | Size    | Purpose                        |
+| --------------- | ------- | ------------------------------ |
+| `.hword`        | 2 bytes | Half-word (16-bit value)       |
+| `.word`         | 4 bytes | Word (32-bit value)            |
+| `.fill N, S, V` | N×S     | Fill N items of S bytes with V |
 
 ### 4.2 Test it
 
@@ -862,9 +862,9 @@ The size is now 28 bytes instead of 16.
 1. **Change the port to 3000** — Calculate the big-endian value for port 3000.
    (Hint: 3000 = 0x0BB8, so big-endian = 0xB80B)
 
-2. **Bind to localhost only** — Change the 16 bytes of zeros to `::1` (loopback).
-   The IPv6 loopback address is 15 bytes of 0x00 followed by 0x01. Verify with
-   strace.
+2. **Bind to localhost only** — Change the 16 bytes of zeros to `::1`
+   (loopback). The IPv6 loopback address is 15 bytes of 0x00 followed by 0x01.
+   Verify with strace.
 
 3. **Try binding twice** — Duplicate the bind syscall. What error do you get?
    What does strace show?
@@ -1129,8 +1129,8 @@ jj commit -m "Add listen syscall (IPv6 dual-stack)"
 
 ### 🔎 You are here
 
-- **You built**: a server socket that is actively listening on `[::]:8080`
-  (IPv4 and IPv6).
+- **You built**: a server socket that is actively listening on `[::]:8080` (IPv4
+  and IPv6).
 - **You learned**: how to factor out a tiny `print` helper and how `bl`/`ret`
   interact with the stack.
 - **Next**: accept a client connection and start behaving like a real server.
@@ -1733,12 +1733,12 @@ Two common issues to fix:
 
 ### 📚 Concepts to understand
 
-| Concept                | Resource                                                                          | What you'll learn                          |
-| ---------------------- | --------------------------------------------------------------------------------- | ------------------------------------------ |
-| `setsockopt()` syscall | [man 2 setsockopt](https://man7.org/linux/man-pages/man2/setsockopt.2.html)       | Set socket options                         |
-| `SO_REUSEADDR`         | [man 7 socket](https://man7.org/linux/man-pages/man7/socket.7.html)               | Allow reuse of local addresses             |
-| `IPV6_V6ONLY`          | [man 7 ipv6](https://man7.org/linux/man-pages/man7/ipv6.7.html)                   | Control IPv4-mapped IPv6 addresses         |
-| TIME_WAIT state        | [TCP TIME_WAIT](https://vincent.bernat.ch/en/blog/2014-tcp-time-wait-state-linux) | Why ports stay "in use" after close        |
+| Concept                | Resource                                                                          | What you'll learn                   |
+| ---------------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
+| `setsockopt()` syscall | [man 2 setsockopt](https://man7.org/linux/man-pages/man2/setsockopt.2.html)       | Set socket options                  |
+| `SO_REUSEADDR`         | [man 7 socket](https://man7.org/linux/man-pages/man7/socket.7.html)               | Allow reuse of local addresses      |
+| `IPV6_V6ONLY`          | [man 7 ipv6](https://man7.org/linux/man-pages/man7/ipv6.7.html)                   | Control IPv4-mapped IPv6 addresses  |
+| TIME_WAIT state        | [TCP TIME_WAIT](https://vincent.bernat.ch/en/blog/2014-tcp-time-wait-state-linux) | Why ports stay "in use" after close |
 
 **Why SO_REUSEADDR?**
 
@@ -1982,8 +1982,7 @@ You can see both socket options being set before bind!
 
 3. **Test dual-stack** — With the server running, try both:
    - `curl http://127.0.0.1:8080/` (IPv4)
-   - `curl http://[::1]:8080/` (IPv6)
-   Both should work!
+   - `curl http://[::1]:8080/` (IPv6) Both should work!
 
 4. **Disable dual-stack** — Change `optval_zero` to `optval_one` for
    `IPV6_V6ONLY`. Now try `curl http://127.0.0.1:8080/`. What happens?
@@ -2618,34 +2617,34 @@ You now have:
 
 ### Common Assembly Directives
 
-| Directive           | Purpose                           |
-| ------------------- | --------------------------------- |
-| `.equ NAME, VALUE`  | Define constant (no memory)       |
-| `.section .text`    | Code section                      |
-| `.section .rodata`  | Read-only data                    |
-| `.section .data`    | Writable data                     |
-| `.section .bss`     | Uninitialized data                |
-| `.global SYMBOL`    | Export symbol                     |
-| `.ascii "str"`      | String (no null terminator)       |
-| `.asciz "str"`      | String (with null terminator)     |
-| `.byte VALUE`       | 1 byte                            |
-| `.hword VALUE`      | 2 bytes                           |
-| `.word VALUE`       | 4 bytes                           |
-| `.quad VALUE`       | 8 bytes                           |
-| `.skip N`           | Reserve N bytes                   |
-| `.fill N, S, V`     | Fill N items of S bytes with V    |
-| `.lcomm NAME, SIZE` | Reserve SIZE bytes in .bss        |
+| Directive           | Purpose                        |
+| ------------------- | ------------------------------ |
+| `.equ NAME, VALUE`  | Define constant (no memory)    |
+| `.section .text`    | Code section                   |
+| `.section .rodata`  | Read-only data                 |
+| `.section .data`    | Writable data                  |
+| `.section .bss`     | Uninitialized data             |
+| `.global SYMBOL`    | Export symbol                  |
+| `.ascii "str"`      | String (no null terminator)    |
+| `.asciz "str"`      | String (with null terminator)  |
+| `.byte VALUE`       | 1 byte                         |
+| `.hword VALUE`      | 2 bytes                        |
+| `.word VALUE`       | 4 bytes                        |
+| `.quad VALUE`       | 8 bytes                        |
+| `.skip N`           | Reserve N bytes                |
+| `.fill N, S, V`     | Fill N items of S bytes with V |
+| `.lcomm NAME, SIZE` | Reserve SIZE bytes in .bss     |
 
 ### Socket Constants (IPv6 Dual-Stack)
 
-| Constant       | Value | Purpose                              |
-| -------------- | ----- | ------------------------------------ |
-| `AF_INET6`     | 10    | IPv6 address family                  |
-| `SOCK_STREAM`  | 1     | TCP socket type                      |
-| `SOL_SOCKET`   | 1     | Socket-level options                 |
-| `SO_REUSEADDR` | 2     | Allow address reuse                  |
-| `IPPROTO_IPV6` | 41    | IPv6 protocol options                |
-| `IPV6_V6ONLY`  | 26    | IPv6-only or dual-stack (0=dual)     |
+| Constant       | Value | Purpose                          |
+| -------------- | ----- | -------------------------------- |
+| `AF_INET6`     | 10    | IPv6 address family              |
+| `SOCK_STREAM`  | 1     | TCP socket type                  |
+| `SOL_SOCKET`   | 1     | Socket-level options             |
+| `SO_REUSEADDR` | 2     | Allow address reuse              |
+| `IPPROTO_IPV6` | 41    | IPv6 protocol options            |
+| `IPV6_V6ONLY`  | 26    | IPv6-only or dual-stack (0=dual) |
 
 ### sockaddr_in6 Structure (28 bytes)
 

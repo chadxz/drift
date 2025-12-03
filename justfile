@@ -5,7 +5,7 @@ VERSION := `git rev-parse HEAD`
 DEV_IMAGE := "drift-dev"
 
 default:
-  @just --list --justfile {{ justfile() }}
+    @just --list --justfile {{ justfile() }}
 
 # Build ARM64 container image using Docker buildx
 build-image:
@@ -61,7 +61,7 @@ dev-run cmd: build-dev
 
 # Run with strace to see syscalls
 strace: build
-  strace -f ./build/drift
+    strace -f ./build/drift
 
 # Start binary under lldb debugger (builds with debug symbols first)
 debug: build-debug
